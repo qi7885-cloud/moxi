@@ -4,6 +4,11 @@
 
 **打开方式：直接双击 `index.html` 即可**（单文件、零依赖、离线可用；无需服务器）。
 
+> 接手维护请先读 **[HANDOFF.md](./HANDOFF.md)**（架构导览 / 运维手册 / 已知坑 / Backlog）。
+>
+> - 线上地址：https://moxi-ink.netlify.app
+> - 仓库：https://github.com/qi7885-cloud/moxi
+
 ## 四个章节，四种交互装置
 
 | 章 | 装置 | 玩法 |
