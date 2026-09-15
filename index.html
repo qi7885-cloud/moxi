@@ -45,7 +45,7 @@ button{font-family:inherit;color:inherit;background:none;border:none}
   background:linear-gradient(var(--bg) 12%, transparent);transition:background 1.4s ease}
 
 /* ============ 背景园林画布 ============ */
-#garden{position:fixed;inset:0;z-index:0;display:block}
+#garden{position:fixed;inset:0;z-index:0;display:block;width:100%;height:100%}
 
 /* ============ 载入仪式 ============ */
 #loader{position:fixed;inset:0;z-index:80;background:var(--bg);display:grid;place-items:center;
@@ -72,8 +72,8 @@ button{font-family:inherit;color:inherit;background:none;border:none}
   font-weight:400;opacity:0;transition:opacity .3s;color:var(--bg);text-indent:.2em;font-style:normal}
 #cursor[data-on="link"] .ring{transform:translate(-50%,-50%) scale(1.75);border-color:var(--soft);background:transparent}
 #cursor[data-on="link"] .dot{transform:translate(-50%,-50%) scale(2.2)}
-#cursor[data-on="ink"] .ring{transform:translate(-50%,-50%) scale(.75);background:var(--accent);border-color:transparent}
-#cursor[data-on="ink"] .ring b{opacity:1}
+#cursor[data-on="ink"] .ring{transform:translate(-50%,-50%) scale(2.2);border-color:var(--faint)}
+#cursor[data-on="ink"] .ring b{opacity:1;color:var(--ink)}
 #cursor[data-on="touch"] .ring{transform:translate(-50%,-50%) scale(2.2);border-color:var(--faint)}
 #cursor[data-on="touch"] .ring b{opacity:1;color:var(--ink)}
 @media (pointer:coarse){#cursor{display:none}}
@@ -168,6 +168,7 @@ html.reduced .rv,html.reduced .split span{transition:none;opacity:1;transform:no
 .panel .tag{position:absolute;top:14px;left:16px;font-size:10px;letter-spacing:.4em;color:var(--soft);pointer-events:none}
 #pond{height:min(54vh,520px);min-height:340px}
 #brush{height:min(60vh,580px);min-height:360px}
+#mount{height:min(52vh,500px);min-height:340px}
 
 .tools{display:flex;align-items:center;gap:14px;margin-top:26px;flex-wrap:wrap}
 .btn{border:1px solid var(--hair);border-radius:999px;padding:13px 30px;font-size:12px;letter-spacing:.34em;
@@ -280,6 +281,14 @@ kbd{font-family:var(--serif-en);border:1px solid var(--faint);border-radius:4px;
       </div>
       <div class="poem rv" data-d="2">山静似太古<br>日长如小年<small>宋 · 唐庚《醉眠》</small></div>
     </div>
+    <div class="tools rv" data-d="3">
+      <button class="btn" id="mountResetBtn" data-magnet>空山 RESET</button>
+      <span class="hint">点击起峰 · 积墨成山&nbsp;&nbsp;CLICK TO RAISE PEAKS</span>
+    </div>
+    <div class="panel rv" data-d="2">
+      <span class="tag">空山 · EMPTY MOUNTAINS</span>
+      <canvas id="mount" data-cursor="ink" data-label="起峰"></canvas>
+    </div>
   </section>
 
   <!-- 贰 · 声 -->
@@ -294,7 +303,7 @@ kbd{font-family:var(--serif-en);border:1px solid var(--faint);border-radius:4px;
         </div>
         <p class="lede rv" data-d="2">一泓静水，一尾墨鲤。<b>以指抚水，涟漪成音</b>——落点越高，其音越清。鲤鱼会循声而来，也会受惊而散。声为五声音阶，宫商角徵羽，尽在指下。</p>
         <div class="tools rv" data-d="3">
-          <button class="btn off" id="soundBtn" data-magnet>抚水有声&nbsp;<s>关</s></button>
+          <button class="btn" id="soundBtn" data-magnet>抚水有声&nbsp;<s>开</s></button>
           <span class="hint">声音由算法当场生成 · 无一采样&nbsp;&nbsp;SYNTHESIZED, NOT SAMPLED</span>
         </div>
       </div>
@@ -432,6 +441,7 @@ function makeNoise(seed=1){
   return x=>{const xi=Math.floor(x),f=x-xi,u=f*f*(3-2*f);const a=p[xi&511],b=p[(xi+1)&511];return a+(b-a)*u};
 }
 function fbm(n,x,oct=4){let v=0,a=.5,f=1;for(let o=0;o<oct;o++){v+=a*n(x*f);f*=2.03;a*=.5}return v}
+function mulberry(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
 
 /* ================= 远山园林 ================= */
 const garden={
@@ -529,7 +539,7 @@ const garden={
 garden.resize();garden.bind();
 
 /* ================= 声音 ================= */
-const sound={ctx:null,master:null,on:false};
+const sound={ctx:null,master:null,on:true};
 const SCALE=[220,261.63,293.66,329.63,392,440,523.25,587.33,659.25];
 function ensureAudio(){
   if(sound.ctx)return;
@@ -568,6 +578,17 @@ $('#soundBtn').addEventListener('click',e=>{
   b.innerHTML=sound.on?'抚水有声&nbsp;<s>开</s>':'抚水有声&nbsp;<s>关</s>';
   if(sound.on)pluck(SCALE[4],.14,0);
 });
+/* 声音默认开启：浏览器自动播放策略要求首次手势后才能出声，
+   故在第一次按下/按键时解锁 AudioContext 并拉起音量 */
+function unlockAudio(){
+  if(!sound.on)return;
+  ensureAudio();
+  if(!sound.ctx)return;
+  if(sound.ctx.state==='suspended')sound.ctx.resume();
+  sound.master.gain.setTargetAtTime(.85,sound.ctx.currentTime,.1);
+}
+addEventListener('pointerdown',unlockAudio,true);
+addEventListener('keydown',unlockAudio,true);
 
 /* ================= 静水池 ================= */
 const pond={
@@ -765,6 +786,106 @@ $('#resetBtn').addEventListener('click',()=>brush.paper());
 $('#sealBtn').addEventListener('click',()=>brush.seal());
 $('#saveBtn').addEventListener('click',()=>brush.save());
 
+/* ================= 空山 · 第壹章创作区 ================= */
+const mount={
+  cv:$('#mount'),peaks:[],n1:makeNoise(53),
+  resize(){
+    const r=this.cv.getBoundingClientRect();
+    this.w=r.width;this.h=r.height;
+    this.cv.width=this.w*DPR;this.cv.height=this.h*DPR;
+    this.ctx=this.cv.getContext('2d');this.ctx.setTransform(DPR,0,0,DPR,0,0);
+    this.render();
+  },
+  rel(e){const r=this.cv.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}},
+  paper(){
+    const c=this.ctx,w=this.w,h=this.h;
+    c.fillStyle=css(PAL.panel);c.fillRect(0,0,w,h);
+    const g=c.createLinearGradient(0,0,0,h);
+    g.addColorStop(0,'rgba(255,255,255,.05)');g.addColorStop(1,'rgba(0,0,0,.045)');
+    c.fillStyle=g;c.fillRect(0,0,w,h);
+  },
+  bind(){
+    this.cv.addEventListener('pointerdown',e=>{
+      const p=this.rel(e);
+      const ay=clamp(p.y,this.h*.12,this.h*.84);
+      this.peaks.push({x:p.x/this.w,y:ay/this.h,seed:Math.floor(Math.random()*1e9)});
+      if(this.peaks.length>80)this.peaks.shift();
+      this.render();
+      const idx=clamp(Math.round((1-ay/this.h)*2),0,2);
+      if(sound.on)pluck(SCALE[idx],.08,(p.x/this.w-.5)*1.4);
+    });
+  },
+  /* 山形轮廓：apexY 为峰顶，底边没入画外；噪声只扰边坡，峰顶精准落指 */
+  sil(cx,apexY,hh,ww,exp,seedO){
+    const c=this.ctx;
+    c.beginPath();c.moveTo(cx-ww/2,this.h+8);
+    for(let i=0;i<=36;i++){
+      const u=i/36*2-1,px=cx+u*ww/2;
+      const py=apexY+Math.pow(Math.abs(u),exp)*hh;
+      const wob=(fbm(this.n1,px*.012+seedO)-.5)*hh*.18*Math.abs(u);
+      c.lineTo(px,py+wob);
+    }
+    c.lineTo(cx+ww/2,this.h+8);c.closePath();
+  },
+  peak(x,y,seed){
+    const c=this.ctx,h=this.h,ink=PAL.ink,R=mulberry(seed);
+    const ht=(h-y)*(.85+R()*.35),bw=Math.min(ht*(1.7+R()*.9),this.w*.8),exp=1.3+R()*.25;
+    /* 远衬淡影 */
+    this.sil(x+(R()*2-1)*bw*.05,y-ht*.04,ht*1.06,bw*1.26,1.25,seed*1.3);
+    c.fillStyle=cssA(ink,.05);c.fill();
+    /* 小峰两座 */
+    for(let i=0;i<2;i++){
+      const dir=i===0?-1:1;
+      const ht2=ht*(.16+R()*.2),ww2=ht2*(2.1+R()*1.4);
+      this.sil(x+dir*(bw*.42+R()*bw*.25),h-ht2*1.05,ht2,ww2,1.35,seed*2.1+i*13.7);
+      c.fillStyle=cssA(ink,.06);c.fill();
+      c.strokeStyle=cssA(ink,.26);c.lineWidth=1.2;c.stroke();
+    }
+    /* 主峰：淡墨染体 + 浓墨勾廓 */
+    this.sil(x,y,ht,bw,exp,seed*1.7);
+    c.fillStyle=cssA(ink,.09);c.fill();
+    c.strokeStyle=cssA(ink,.5);c.lineWidth=1.6;
+    c.shadowColor=cssA(ink,.5);c.shadowBlur=8;c.stroke();c.shadowBlur=0;
+    /* 披麻皴：沿两坡的短笔 */
+    c.strokeStyle=cssA(ink,.13);c.lineWidth=1.1;
+    const tn=10+Math.floor(R()*8);
+    for(let i=0;i<tn;i++){
+      const u=(R()*2-1)*.88;
+      const px=x+u*bw/2,py=y+Math.pow(Math.abs(u),exp)*ht+3;
+      const len=ht*(.08+R()*.12)*(1.25-Math.abs(u)*.5),dx=(x-px)*.16;
+      c.beginPath();c.moveTo(px,py);
+      c.quadraticCurveTo(px+dx*.4,py+len*.55,px+dx,py+len);
+      c.stroke();
+    }
+    /* 峰顶主脉 */
+    c.strokeStyle=cssA(ink,.2);
+    for(let i=0;i<4;i++){
+      const a=(R()*2-1)*.55,len=ht*(.18+R()*.2);
+      const ex=x+Math.sin(a)*len*.6,ey=y+len;
+      c.beginPath();c.moveTo(x+(R()*6-3),y+4);
+      c.quadraticCurveTo((x+ex)/2+(R()*10-5),(y+ey)/2,ex,ey);
+      c.stroke();
+    }
+    /* 苔点 */
+    c.fillStyle=cssA(ink,.3);
+    for(let i=0;i<7;i++){
+      c.beginPath();c.arc(x+(R()*2-1)*bw*.16,y+R()*ht*.4,1+R()*1.6,0,6.283);c.fill();
+    }
+  },
+  render(){
+    if(!this.w)return;
+    const c=this.ctx,w=this.w,h=this.h;
+    this.paper();
+    for(const pk of this.peaks)this.peak(pk.x*w,pk.y*h,pk.seed);
+    /* 山脚雾带：诸峰皆从云雾里长出 */
+    const m=c.createLinearGradient(0,h*.55,0,h);
+    m.addColorStop(0,cssA(PAL.panel,0));m.addColorStop(.72,cssA(PAL.panel,.55));m.addColorStop(1,cssA(PAL.panel,.92));
+    c.fillStyle=m;c.fillRect(0,h*.55,w,h*.45);
+  }
+};
+mount.resize();mount.bind();
+$('#mountResetBtn').addEventListener('click',()=>{mount.peaks.length=0;mount.render()});
+
 /* ================= 四时 ================= */
 $$('.chip').forEach(ch=>ch.addEventListener('click',()=>{
   overrideKey=ch.dataset.phase;applyPhase();
@@ -917,12 +1038,12 @@ start();
 
 /* ================= 自适应 ================= */
 function onResize(){
-  garden.resize();pond.resize();brush.resize();
+  garden.resize();pond.resize();brush.resize();mount.resize();
   syncHeight();
 }
 let rzT=null;
 addEventListener('resize',()=>{clearTimeout(rzT);rzT=setTimeout(onResize,120)});
-addEventListener('load',()=>{syncHeight();garden.resize();pond.resize()});
+addEventListener('load',()=>{syncHeight();garden.resize();pond.resize();mount.resize()});
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(syncHeight);
 syncHeight();
 </script>
