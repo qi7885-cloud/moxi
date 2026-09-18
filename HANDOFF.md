@@ -62,12 +62,20 @@ moxi/
 
 ## 5. 运维手册
 
-**日常更新**（改完 `index.html`）：
+**日常更新**（改完文件，已绑定自动部署）：
 
 ```bash
 cd ~/Desktop/创意/moxi
-git commit -am "更新说明" && git push        # 更新 GitHub
-zip -q deploy.zip index.html README.md      # 重新部署 Netlify
+git add -A && git commit -m "更新说明" && git push   # 推送即自动部署，约 1 分钟内上线
+```
+
+如需回看部署进度：Netlify 后台 → 项目 → Deploys 页。
+
+**手动部署（备用，仅当自动部署失效时）**：需要 `NETLIFY_TOKEN`（维护者自持，用完即吊销）：
+
+```bash
+cd ~/Desktop/创意/moxi
+zip -q deploy.zip index.html README.md
 curl -X POST -H "Authorization: Bearer <NETLIFY_TOKEN>" \
   -H "Content-Type: application/zip" \
   --data-binary @deploy.zip \
@@ -96,7 +104,7 @@ curl -X POST -H "Authorization: Bearer <NETLIFY_TOKEN>" \
 
 ## 7. Backlog（候选优化，按价值排序）
 
-- [ ] Netlify Link repository 或 GitHub Actions，实现 push 自动部署
+- [x] Netlify Link repository 已绑定 GitHub（2026-09-18）：`git push` 即自动部署，日常更新不再需要令牌与 deploy.zip
 - [ ] 社交分享：补 `og:image`（可截夜墨首屏 1200×630）与 `og:title/description`
 - [ ] 新章节候选：雪（粒子落雪 + 山体积雪）、雨（涟漪自动密集 + 雨声白噪）、印谱集（用户钤印的画廊）
 - [ ] 环境音：夜墨模式加极低音量风声（噪声 + 低通 + LFO）
