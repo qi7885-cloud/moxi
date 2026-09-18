@@ -601,35 +601,175 @@ function unlockAudio(){
 addEventListener('pointerdown',unlockAudio,true);
 addEventListener('keydown',unlockAudio,true);
 
+/* ================= 荷塘曲 · 抚水成歌 ================= */
+/* 实时合成的音符序列：节奏（BPM）随抚水速度变化，音高不变。
+   参考调度法：每个音符按 noteTime=BEAT/tempo 推进，鼠标速度只改 tempo。 */
+const song={
+  seq:[ /* 茉莉花 · A 宫五声（音阶索引, 拍数；0 为歇） */
+    /* 好一朵美丽的茉莉花 */
+    [3,.5],[3,.5],[4,1],[5,.5],[6,.5],[6,.75],[5,.25],[4,1],[4,.5],[5,.5],[4,1.5],
+    [3,.5],[3,.5],[4,1],[5,.5],[6,.5],[6,.75],[5,.25],[4,1],[4,.5],[5,.5],[4,1],[0,.5],
+    /* 芬芳美丽满枝桠 */
+    [4,.5],[4,.5],[3,1],[4,.5],[5,.5],[5,1.5],[4,.5],[3,.5],[2,1],[3,1],
+    /* 又香又白人人夸 */
+    [3,.5],[3,.5],[4,.5],[5,.5],[4,.5],[3,.5],[1,1.5],[2,.5],[1,2],[0,.5]
+  ],
+  BEAT:.72,           /* 基准拍长（≈83 BPM 的从容） */
+  i:0,pos:0,tempo:1,spd:0,idle:99,bass:0,bar:false,
+  stroke(pxPerSec){   /* 抚水：上报瞬时速度，目标节奏夹在 0.55~1.5 之间 */
+    this.spd=lerp(this.spd,pxPerSec,.4);
+    if(this.idle>2.2){ /* 曲终再抚，从头起曲并奏响首音 */
+      this.i=0;this.pos=0;this.bass=0;this.bar=false;
+      const nt=this.seq[0][0];if(nt>0)pluck(SCALE[nt],.13,0);
+    }
+    this.idle=0;
+  },
+  step(dt){
+    this.idle+=dt;
+    this.spd*=Math.exp(-dt*1.15);                 /* 停手后速度指数衰减 */
+    const tgt=clamp(.55+this.spd/900,.55,1.5);    /* 快抚曲疾、缓抚曲徐，不出上下的界 */
+    this.tempo=lerp(this.tempo,tgt,Math.min(1,dt*3.2));
+    if(this.idle>2.2)return;                      /* 离手片刻即收拍，余韵交给回声 */
+    this.pos+=dt*this.tempo/this.BEAT;
+    /* 低音：每两拍一记，A2/E3 交替，衬得曲子温润 */
+    this.bass+=dt*this.tempo/this.BEAT;
+    if(this.bass>=2){this.bass-=2;this.bar=!this.bar;pluck(this.bar?110:164.81,.055,0)}
+    let guard=0;
+    while(this.pos>=this.seq[this.i][1]&&guard++<8){
+      this.pos-=this.seq[this.i][1];
+      this.i=(this.i+1)%this.seq.length;
+      const nt=this.seq[this.i];
+      if(nt[0]>0)pluck(SCALE[nt[0]],.13,clamp((pond.last?pond.last.x/pond.w-.5:0)*1.4,-1,1));
+    }
+  }
+};
+
 /* ================= 静水池 ================= */
 const pond={
-  cv:$('#pond'),ripples:[],last:null,t:0,amb:2,
+  cv:$('#pond'),ripples:[],last:null,lastT:0,t:0,amb:2,
   koi:{x:0,y:0,dir:rand(0,6.28),sp:26,wig:0},
+  minnow:{x:0,y:0,dir:rand(0,6.28),sp:19,wig:0},
+  /* 荷叶荷花：稳定的构图位（比例坐标），resize 不走样 */
+  pads:[
+    {fx:.13,fy:.36,r:.115,ph:0,bloom:1},   /* 左侧大叶，擎一朵荷花 */
+    {fx:.24,fy:.16,r:.072,ph:2.1},
+    {fx:.86,fy:.32,r:.10,ph:4.2,bloom:1},  /* 右侧叶，再一朵 */
+    {fx:.80,fy:.64,r:.062,ph:1.2},
+    {fx:.30,fy:.80,r:.085,ph:3.3,bud:1},   /* 左下叶，一支含苞 */
+  ],
   resize(){
     const r=this.cv.getBoundingClientRect();
+    if(!r.width)return; /* 面板隐藏时矩形为零，保留旧尺寸别清掉 */
     this.w=r.width;this.h=r.height;
     this.cv.width=this.w*DPR;this.cv.height=this.h*DPR;
     this.ctx=this.cv.getContext('2d');this.ctx.setTransform(DPR,0,0,DPR,0,0);
     if(!this.koi.x){this.koi.x=this.w*.5;this.koi.y=this.h*.55}
+    if(!this.minnow.x){this.minnow.x=this.w*.7;this.minnow.y=this.h*.3}
     this.glints=Array.from({length:22},()=>({x:Math.random(),y:Math.random(),l:rand(20,70),v:rand(3,9)}));
   },
   bind(){
-    const rel=e=>{const r=this.cv.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}};
+    const rel=e=>{const r=this.cv.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top,t:performance.now()}};
     this.cv.addEventListener('pointermove',e=>{
       const p=rel(e);
-      if(!this.last||Math.hypot(p.x-this.last.x,p.y-this.last.y)>26){
-        this.last=p;this.spawn(p.x,p.y,true);
+      const gap=!this.last||Math.hypot(p.x-this.last.x,p.y-this.last.y)>26;
+      if(gap){
+        /* 抚水速度 → 曲速 */
+        if(this.last){
+          const dts=Math.max(.016,(p.t-this.lastT)/1000);
+          song.stroke(Math.hypot(p.x-this.last.x,p.y-this.last.y)/dts);
+        }else song.stroke(300);
+        this.lastT=p.t;
+        this.last=p;this.spawn(p.x,p.y,true); /* 涟漪带声：墨鲤循声追着鼠标游 */
       }
     });
-    this.cv.addEventListener('pointerdown',e=>{const p=rel(e);this.spawn(p.x,p.y,true,.7)});
+    this.cv.addEventListener('pointerdown',e=>{const p=rel(e);song.stroke(600);this.spawn(p.x,p.y,true,.7)});
     this.cv.addEventListener('pointerleave',()=>this.last=null);
   },
   spawn(x,y,loud,pow=1){
     this.ripples.push({x,y,r:2,max:rand(90,150)*pow,loud,age:0});
     if(this.ripples.length>14)this.ripples.shift();
-    if(loud){
-      const idx=clamp(Math.round((1-y/this.h)*(SCALE.length-1)),0,SCALE.length-1);
-      pluck(SCALE[idx],.15,(x/this.w-.5)*1.4);
+  },
+  /* 荷叶：墨色写意，缺口朝上，放射叶脉；涟漪经过时轻晃 */
+  pad(c,x,y,R,t,ph,wob){
+    const sway=Math.sin(t*.35+ph)*.05+wob*.07;
+    const bob=Math.sin(t*.9+ph)*2+wob*2.6;
+    c.save();c.translate(x,y+bob);c.rotate(sway);c.scale(1,.82);
+    c.beginPath();c.ellipse(3,4,R,R,0,0,6.283);       /* 叶下投影 */
+    c.fillStyle=cssA(PAL.ink,.10);c.fill();
+    const a0=-Math.PI/2+.3,a1=-Math.PI/2-.3;
+    c.beginPath();c.moveTo(0,0);
+    c.arc(0,0,R,a0,a1,false);c.closePath();           /* 缺口圆叶 */
+    c.fillStyle=cssA(PAL.ink,.30);c.fill();
+    c.strokeStyle=cssA(PAL.ink,.42);c.lineWidth=1.2;c.stroke();
+    c.strokeStyle=cssA(PAL.ink,.17);c.lineWidth=1;    /* 放射叶脉 */
+    for(let k=0;k<9;k++){
+      const a=a0+.35+k*(5.98/9);
+      c.beginPath();c.moveTo(Math.cos(a)*R*.12,Math.sin(a)*R*.12);
+      c.lineTo(Math.cos(a)*R*.9,Math.sin(a)*R*.9);c.stroke();
+    }
+    c.beginPath();c.arc(0,0,2.2,0,6.283);             /* 叶脐 */
+    c.fillStyle=cssA(PAL.ink,.5);c.fill();
+    c.beginPath();c.arc(0,0,R*.86,Math.PI*.55,Math.PI*.95); /* 叶缘一线高光 */
+    c.strokeStyle=cssA(PAL.bg,.35);c.lineWidth=2;c.stroke();
+    c.restore();
+  },
+  /* 荷花：外六瓣内四瓣，淡朱晕染、墨线勾廓，莲蓬一点 */
+  blossom(c,x,y,s,t,ph){
+    const sway=Math.sin(t*.5+ph)*.05;
+    c.save();c.translate(x,y);c.rotate(sway-.18);
+    const petal=(L,Wd,a)=>{c.save();c.rotate(a);
+      c.beginPath();c.moveTo(0,0);
+      c.quadraticCurveTo(Wd,-L*.45,Wd*.35,-L*.92);
+      c.quadraticCurveTo(0,-L*1.08,-Wd*.35,-L*.92);
+      c.quadraticCurveTo(-Wd,-L*.45,0,0);
+      c.fillStyle=cssA(PAL.accent,.14);c.fill();
+      c.strokeStyle=cssA(PAL.ink,.55);c.lineWidth=1;c.stroke();
+      c.restore()};
+    for(let k=0;k<6;k++)petal(15*s,5.6*s,k*Math.PI/3+.26);
+    for(let k=0;k<4;k++)petal(10*s,4.6*s,k*Math.PI/2+.65);
+    c.beginPath();c.arc(0,-3*s,1.8*s,0,6.283);
+    c.fillStyle=cssA(PAL.accent,.8);c.fill();
+    c.fillStyle=cssA(PAL.ink,.55);
+    for(let k=0;k<5;k++){c.beginPath();c.arc(Math.cos(k*1.257)*3.4*s,-3*s+Math.sin(k*1.257)*3.4*s,.8*s,0,6.283);c.fill()}
+    c.restore();
+  },
+  /* 含苞：两瓣相合，斜倚一枝 */
+  bud(c,x,y,s,t,ph){
+    const sway=Math.sin(t*.5+ph)*.06;
+    c.save();c.translate(x,y);c.rotate(-.5+sway);
+    const petal=(L,Wd,a)=>{c.save();c.rotate(a);
+      c.beginPath();c.moveTo(0,0);
+      c.quadraticCurveTo(Wd,-L*.5,Wd*.2,-L);
+      c.quadraticCurveTo(0,-L*1.12,-Wd*.2,-L);
+      c.quadraticCurveTo(-Wd,-L*.5,0,0);
+      c.fillStyle=cssA(PAL.accent,.16);c.fill();
+      c.strokeStyle=cssA(PAL.ink,.5);c.lineWidth=1;c.stroke();c.restore()};
+    petal(14*s,5*s,-.22);petal(14*s,5*s,.22);petal(10*s,4.4*s,0);
+    c.restore();
+  },
+  lotus(c,t){
+    const S=Math.min(this.w,this.h*1.55);
+    for(const p of this.pads){
+      const px=p.fx*this.w,py=p.fy*this.h,R=p.r*S;
+      let wob=0;
+      for(const r of this.ripples){                    /* 涟漪擦身，荷叶轻晃 */
+        const d=Math.abs(Math.hypot(px-r.x,(py-r.y)/.82)-r.r);
+        if(d<26)wob+=(1-r.r/r.max)*(1-d/26);
+      }
+      wob=clamp(wob,0,1);
+      if(p.bloom){
+        c.beginPath();c.moveTo(px+R*.1,py-R*.2);       /* 花梗 */
+        c.quadraticCurveTo(px+R*.3,py-R*.6,px+R*.5,py-R*.9);
+        c.strokeStyle=cssA(PAL.ink,.35);c.lineWidth=1.4;c.stroke();
+        this.blossom(c,px+R*.55,py-R*.95,R/27,t,p.ph);
+      }
+      if(p.bud){
+        c.beginPath();c.moveTo(px+R*.1,py-R*.15);
+        c.quadraticCurveTo(px+R*.3,py-R*.5,px+R*.42,py-R*.85);
+        c.strokeStyle=cssA(PAL.ink,.35);c.lineWidth=1.4;c.stroke();
+        this.bud(c,px+R*.48,py-R*.95,R/26,t,p.ph);
+      }
+      this.pad(c,px,py,R,t,p.ph,wob);
     }
   },
   step(dt){
@@ -646,21 +786,6 @@ const pond={
       gl.x=(gl.x+gl.v*dt/w)%1;
       c.strokeStyle=cssA(ink,.07);c.lineWidth=1;
       c.beginPath();c.moveTo(gl.x*w-gl.l/2,gl.y*h);c.lineTo(gl.x*w+gl.l/2,gl.y*h);c.stroke();
-    }
-    /* 涟漪 */
-    for(let i=this.ripples.length-1;i>=0;i--){
-      const r=this.ripples[i];r.age+=dt;
-      r.r+=(r.max-r.r)*.022;
-      const a=clamp(1-r.r/r.max,0,1);
-      c.beginPath();
-      for(let ang=0;ang<=6.3;ang+=.16){
-        const rr=r.r*(1+(fbm(this.n2||makeNoise(3),ang*2.2+r.x*.01)-.5)*.12);
-        const x=r.x+Math.cos(ang)*rr,y=r.y+Math.sin(ang)*rr*.38;
-        ang===0?c.moveTo(x,y):c.lineTo(x,y);
-      }
-      c.closePath();
-      c.strokeStyle=cssA(ink,a*.4);c.lineWidth=1.2;c.stroke();
-      if(r.r/r.max>.99)this.ripples.splice(i,1);
     }
     /* 墨鲤 */
     const k=this.koi;
@@ -686,25 +811,59 @@ const pond={
       k.sp=lerp(k.sp,26,dt*1.1);
       k.x+=Math.cos(k.dir)*k.sp*dt;k.y+=Math.sin(k.dir)*k.sp*dt*.8;
       k.x=clamp(k.x,14,w-14);k.y=clamp(k.y,14,h-14);
+      /* 小鱼一尾：同一片噪声场的另一段，悠然作伴 */
+      const f=this.minnow;
+      f.dir+=(fbm(this.n1,this.t*.13+40+f.x*.003)-.5)*1.1*dt;
+      if(f.x<50||f.x>w-50||f.y<50||f.y>h-50){
+        const ta=Math.atan2(cy-f.y,cx-f.x);
+        let d=ta-f.dir;while(d>Math.PI)d-=6.283;while(d<-Math.PI)d+=6.283;
+        f.dir+=d*2.2*dt;
+      }
+      f.sp=lerp(f.sp,19,dt*1.1);
+      f.x+=Math.cos(f.dir)*f.sp*dt;f.y+=Math.sin(f.dir)*f.sp*dt*.85;
+      f.x=clamp(f.x,12,w-12);f.y=clamp(f.y,12,h-12);
     }
+    const fish=(fx,fy,dir,wig,S,alpha)=>{
+      c.save();c.translate(fx,fy);c.rotate(dir);c.scale(S,S);
+      c.fillStyle=cssA(ink,alpha);
+      c.beginPath(); /* 尾 */
+      c.moveTo(-10,0);
+      c.quadraticCurveTo(-22,-3+wig*7,-30,-6+wig*11);
+      c.quadraticCurveTo(-24,wig*5,-30,6+wig*11);
+      c.quadraticCurveTo(-22,3+wig*7,-10,0);
+      c.fill();
+      c.beginPath(); /* 身 */
+      c.moveTo(21,0);
+      c.quadraticCurveTo(8,-10,-9,-4);
+      c.quadraticCurveTo(-15,0,-9,4);
+      c.quadraticCurveTo(8,10,21,0);
+      c.fill();
+      c.fillStyle=cssA(PAL.bg,.8); /* 眼 */
+      c.beginPath();c.arc(13,-3.4,1.5,0,6.283);c.fill();
+      c.restore();
+    };
+    const f=this.minnow;
+    f.wig=Math.sin(this.t*6+40)*(.3+clamp(f.sp/110,0,.5));
+    fish(f.x,f.y,f.dir,f.wig,.85,.6);
     k.wig=Math.sin(this.t*5.2+k.sp*.05)*(.35+clamp(k.sp/120,0,.5));
-    c.save();c.translate(k.x,k.y);c.rotate(k.dir);c.scale(1.45,1.45);
-    c.fillStyle=cssA(ink,.88);
-    c.beginPath(); /* 尾 */
-    c.moveTo(-10,0);
-    c.quadraticCurveTo(-22,-3+k.wig*7,-30,-6+k.wig*11);
-    c.quadraticCurveTo(-24,k.wig*5,-30,6+k.wig*11);
-    c.quadraticCurveTo(-22,3+k.wig*7,-10,0);
-    c.fill();
-    c.beginPath(); /* 身 */
-    c.moveTo(21,0);
-    c.quadraticCurveTo(8,-10,-9,-4);
-    c.quadraticCurveTo(-15,0,-9,4);
-    c.quadraticCurveTo(8,10,21,0);
-    c.fill();
-    c.fillStyle=cssA(PAL.bg,.8); /* 眼 */
-    c.beginPath();c.arc(13,-3.4,1.5,0,6.283);c.fill();
-    c.restore();
+    fish(k.x,k.y,k.dir,k.wig,1.45,.88);
+    /* 涟漪 */
+    for(let i=this.ripples.length-1;i>=0;i--){
+      const r=this.ripples[i];r.age+=dt;
+      r.r+=(r.max-r.r)*.022;
+      const a=clamp(1-r.r/r.max,0,1);
+      c.beginPath();
+      for(let ang=0;ang<=6.3;ang+=.16){
+        const rr=r.r*(1+(fbm(this.n2||makeNoise(3),ang*2.2+r.x*.01)-.5)*.12);
+        const x=r.x+Math.cos(ang)*rr,y=r.y+Math.sin(ang)*rr*.38;
+        ang===0?c.moveTo(x,y):c.lineTo(x,y);
+      }
+      c.closePath();
+      c.strokeStyle=cssA(ink,a*.4);c.lineWidth=1.2;c.stroke();
+      if(r.r/r.max>.99)this.ripples.splice(i,1);
+    }
+    /* 荷叶荷花：鱼游叶下，涟漪自叶缘穿行 */
+    this.lotus(c,this.t);
     /* 闲时自涟 */
     this.amb-=dt;
     if(this.amb<=0){this.amb=rand(2.6,5.5);this.spawn(rand(w*.15,w*.85),rand(h*.25,h*.8),false,rand(.5,.8))}
@@ -718,6 +877,7 @@ const brush={
   cv:$('#brush'),drawing:false,last:null,pts:[],
   resize(){
     const r=this.cv.getBoundingClientRect();
+    if(!r.width)return; /* 面板隐藏时矩形为零：手卷画作不可再生，保留原画别清 */
     const old=document.createElement('canvas');
     if(this.w){old.width=this.cv.width;old.height=this.cv.height;old.getContext('2d').drawImage(this.cv,0,0)}
     this.w=r.width;this.h=r.height;
@@ -1122,6 +1282,7 @@ function frame(t){
   stepPal(dt);
   garden.step(dt);
   pond.step(dt);
+  song.step(dt);
   applyScroll();
   railStep();
   cursorStep();
@@ -1130,7 +1291,7 @@ function frame(t){
 }
 function start(){if(!raf){lastT=performance.now();raf=requestAnimationFrame(frame)}}
 function stop(){if(raf){cancelAnimationFrame(raf);raf=null}}
-document.addEventListener('visibilitychange',()=>document.hidden?stop():start());
+document.addEventListener('visibilitychange',()=>{if(document.hidden){stop()}else{start();onResize()}});
 start();
 
 /* ================= 自适应 ================= */
