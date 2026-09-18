@@ -10,10 +10,12 @@
 | 资产 | 地址 / ID | 备注 |
 |------|-----------|------|
 | GitHub 仓库 | https://github.com/qi7885-cloud/moxi | 分支 `main` |
-| Netlify 站点 | https://moxi-ink.netlify.app | 已上线（HTTP 200） |
-| Netlify Site ID | `1513a9c3-6162-446e-91b0-267d098ef1f6` | API 部署时使用 |
+| Cloudflare Pages 站点 | https://moxi-arj.pages.dev | 2026-09-18 起为正式线上地址；push 即自动部署 |
+| Netlify 站点（已退役） | https://moxi-ink.netlify.app | 免费版构建额度耗尽、新部署被封（403 credit exceeded），内容停在旧版；域名 `moxi-ink.netlify.app` 与 Site ID `1513a9c3-6162-446e-91b0-267d098ef1f6` 仅留档 |
 | 本地路径 | `~/Desktop/创意/moxi` | git 仓库根目录即网站根目录 |
 | 本地预览 | `python3 -m http.server 8866` | 可选；直接双击 `index.html` 也能完整运行（零外部请求） |
+
+> **托管迁移说明**：Netlify 2025-09 起改为信用点计费（免费版 300 点/月，每次生产部署约 15 点），用尽后连 API 直传部署都会 403。故迁至 Cloudflare Pages（免费版 500 次构建/月、静态流量不限）。注意 `*.pages.dev` 默认域名在中国大陆访问不稳定，面向国内访客需自定义域名 + 备案 + 国内 CDN。
 
 ## 2. 文件清单
 
@@ -62,34 +64,22 @@ moxi/
 
 ## 5. 运维手册
 
-**日常更新**（改完文件，已绑定自动部署）：
+**日常更新**（改完文件，Cloudflare Pages 已关联仓库自动部署）：
 
 ```bash
 cd ~/Desktop/创意/moxi
 git add -A && git commit -m "更新说明" && git push   # 推送即自动部署，约 1 分钟内上线
 ```
 
-如需回看部署进度：Netlify 后台 → 项目 → Deploys 页。
+如需回看部署进度：Cloudflare 后台 → Workers & Pages → moxi-arj → Deployments 页。
 
-**手动部署（备用，仅当自动部署失效时）**：需要 `NETLIFY_TOKEN`（维护者自持，用完即吊销）：
-
-```bash
-cd ~/Desktop/创意/moxi
-zip -q deploy.zip index.html README.md
-curl -X POST -H "Authorization: Bearer <NETLIFY_TOKEN>" \
-  -H "Content-Type: application/zip" \
-  --data-binary @deploy.zip \
-  "https://api.netlify.com/api/v1/sites/1513a9c3-6162-446e-91b0-267d098ef1f6/deploys"
-```
-
-**一劳永逸**：Netlify 后台 → Site configuration → Build & deploy → Link repository 绑定本仓库后，`git push` 即自动部署（也可配 GitHub Actions，用 `nwtgck/actions-netlify`，secret 存 token）。
-
-**回滚**：Netlify 后台 Deploys 页可一键回滚任意历史部署；代码回滚则 `git revert` 后重新部署。
+**回滚**：Cloudflare 后台该项目 → Deployments → 任一历史部署右侧菜单 → Rollback to this deployment；代码回滚则 `git revert` 后推送。
 
 **凭据说明**：
-- 需要两个令牌：GitHub fine-grained PAT（Contents: Read and write；要自动建仓还需 Administration）、Netlify PAT（`nfp_` 开头）
-- 本机与仓库**均未存储任何令牌**（origin 为匿名 URL，History 无敏感信息）；令牌由维护者自持
-- 交接时用户曾在对话中提供过令牌，如担心可自行吊销重发，吊销不影响已部署站点
+- 需要 GitHub fine-grained PAT（Contents: Read and write；要自动建仓还需 Administration）；Cloudflare 走 GitHub App 授权，无常驻令牌
+- 本机与仓库**均未存储任何令牌**（origin 为匿名 URL，History 无敏感信息）；令牌由维护者自持，用完即吊销
+
+**旧 Netlify 站点**：已退役（构建额度耗尽），仅留档不维护；若要彻底删除可进 Netlify 后台操作，不影响 Cloudflare 新站。
 
 ## 6. 已知边界与坑（重要）
 

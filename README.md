@@ -6,7 +6,7 @@
 
 > 接手维护请先读 **[HANDOFF.md](./HANDOFF.md)**（架构导览 / 运维手册 / 已知坑 / Backlog）。
 >
-> - 线上地址：https://moxi-ink.netlify.app
+> - 线上地址：https://moxi-arj.pages.dev
 > - 仓库：https://github.com/qi7885-cloud/moxi
 
 ## 四个章节，四种交互装置
