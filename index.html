@@ -139,6 +139,8 @@ section{position:relative}
   transition:opacity 1.1s var(--ease) calc(var(--i)*90ms),transform 1.1s var(--ease) calc(var(--i)*90ms),filter 1.1s var(--ease) calc(var(--i)*90ms)}
 .in .split span,.ready .split span{opacity:1;transform:none;filter:blur(0)}
 html.reduced .rv,html.reduced .split span{transition:none;opacity:1;transform:none;filter:none}
+/* 减弱动态效果： decorative 动画一律停止（噪点抖动 / 墨滴 / 冒号闪烁；冒号须带 ID 压过 #clockBig .cl 特异性） */
+html.reduced #grain,html.reduced .hero-sub .line i,html.reduced #clock .cl,html.reduced #clockBig .cl{animation:none}
 
 /* ============ 首屏 ============ */
 #hero{min-height:100vh;min-height:100svh;display:flex;align-items:center;
@@ -199,7 +201,7 @@ html.reduced .rv,html.reduced .split span{transition:none;opacity:1;transform:no
 .chip{display:flex;align-items:center;gap:12px;border:1px solid var(--hair);border-radius:999px;
   padding:11px 22px 11px 12px;font-size:12px;letter-spacing:.3em;color:var(--soft);
   transition:border-color .5s var(--ease),color .5s var(--ease)}
-.chip i{width:22px;height:22px;border-radius:5px;font-style:normal;box-shadow:inset 0 0 0 1px rgba(0,0,0,.18)}
+.chip i{width:22px;height:22px;border-radius:5px;font-style:normal;background:var(--sw);box-shadow:inset 0 0 0 1px rgba(0,0,0,.18)}
 .chip:hover{border-color:var(--faint);color:var(--ink)}
 .chip.on{border-color:var(--accent);color:var(--ink)}
 .chip.on i{outline:1px solid var(--accent);outline-offset:3px}
@@ -255,7 +257,7 @@ kbd{font-family:var(--serif-en);border:1px solid var(--faint);border-radius:4px;
 <header id="bar">
   <a class="seal-s" href="#hero" data-magnet aria-label="回到卷首">墨</a>
   <div id="phaseTag"><b id="phaseCn">昼墨</b><span id="phaseEn">DAY INK</span></div>
-  <div id="clock"><b>—时</b>&nbsp;<span class="cl">·</span>&nbsp;--:--</div>
+  <div id="clock"><b id="clockName">—时</b>&nbsp;<span class="cl">·</span>&nbsp;<span id="clockHM">--:--</span></div>
 </header>
 
 <!-- 侧栏卷轴 -->
@@ -364,16 +366,16 @@ kbd{font-family:var(--serif-en);border:1px solid var(--faint);border-radius:4px;
         </div>
         <p class="lede rv" data-d="2">这座园林随此刻更衣：<b>晨起微赭，日中宣白，暮时带暖，入夜墨青</b>。四次到访，四种山水。亦可点下方色签，先窥四时。</p>
         <div class="chips rv" data-d="3">
-          <button class="chip" data-phase="dawn"><i style="background:#f1e8dd"></i>晨 DAWN</button>
-          <button class="chip" data-phase="day"><i style="background:#f3eee2"></i>昼 DAY</button>
-          <button class="chip" data-phase="dusk"><i style="background:#ebe0cf"></i>暮 DUSK</button>
-          <button class="chip" data-phase="night"><i style="background:#161310"></i>夜 NIGHT</button>
+          <button class="chip" data-phase="dawn"><i></i>晨 DAWN</button>
+          <button class="chip" data-phase="day"><i></i>昼 DAY</button>
+          <button class="chip" data-phase="dusk"><i></i>暮 DUSK</button>
+          <button class="chip" data-phase="night"><i></i>夜 NIGHT</button>
           <button id="nowBtn">回到此刻</button>
         </div>
       </div>
       <div class="poem rv" data-d="2">逝者如斯夫<br>不舍昼夜<small>《论语 · 子罕》</small></div>
     </div>
-    <div id="clockBig" aria-label="当前时刻">--<span class="cl">:</span>--<small id="clockSide">—时 · —墨</small></div>
+    <div id="clockBig" aria-label="当前时刻"><span id="clockHH">--</span><span class="cl">:</span><span id="clockMM">--</span><small id="clockSide">—时 · —墨</small></div>
   </section>
 
   <footer>
@@ -431,7 +433,8 @@ function applyPhase(){
   r.setProperty('--bg',p.bg);r.setProperty('--ink',p.ink);r.setProperty('--panel',p.panel);r.setProperty('--accent',p.accent);
   PAL.tgt={ink:hex2rgb(p.ink),bg:hex2rgb(p.bg),panel:hex2rgb(p.panel),accent:hex2rgb(p.accent),night:phaseKey==='night'?1:0};
   $('#phaseCn').textContent=p.cn;$('#phaseEn').textContent=p.en;
-  $$('.chip').forEach(c=>c.classList.toggle('on',c.dataset.phase===phaseKey));
+  $$('.chip').forEach(c=>{c.classList.toggle('on',c.dataset.phase===phaseKey);
+    c.style.setProperty('--sw',PHASES[c.dataset.phase].bg)}); /* 色签底色单源取 PHASES，改配色不用两头改 */
   $('#nowBtn').classList.toggle('show',!!overrideKey);
   const h=new Date().getHours();
   $('#clockSide').textContent=`${shichen[Math.floor(((h+1)%24)/2)]}时 · ${p.cn}`;
@@ -962,6 +965,7 @@ const mount={
   cv:$('#mount'),peaks:[],n1:makeNoise(53),lastSp:-1,
   resize(){
     const r=this.cv.getBoundingClientRect();
+    if(!r.width)return; /* 面板隐藏时矩形为零，保留旧尺寸别清掉（与 pond/brush 同款） */
     this.w=r.width;this.h=r.height;
     this.cv.width=this.w*DPR;this.cv.height=this.h*DPR;
     this.ctx=this.cv.getContext('2d');this.ctx.setTransform(DPR,0,0,DPR,0,0);
@@ -1145,11 +1149,18 @@ addEventListener('keydown',e=>{
 /* ================= 时辰钟 ================= */
 const shichen=['子','丑','寅','卯','辰','巳','午','未','申','酉','戌','亥'];
 function pad(n){return String(n).padStart(2,'0')}
+/* 骨架一次成型，tick 只改文本节点——不再每秒重建 DOM（读屏器不再每秒重报） */
+const clockEls={name:$('#clockName'),hm:$('#clockHM'),hh:$('#clockHH'),mm:$('#clockMM'),side:$('#clockSide')};
+const clockLast={hm:'',nm:''};
 function tickClock(){
   const d=new Date(),h=d.getHours(),m=d.getMinutes();
   const nm=shichen[Math.floor(((h+1)%24)/2)];
-  $('#clock').innerHTML=`<b>${nm}时</b>&nbsp;<span class="cl">·</span>&nbsp;${pad(h)}<span class="cl">:</span>${pad(m)}`;
-  $('#clockBig').innerHTML=`${pad(h)}<span class="cl">:</span>${pad(m)}<small id="clockSide">${nm}时 · ${PHASES[phaseKey].cn}</small>`;
+  const hm=`${pad(h)}:${pad(m)}`;
+  if(hm!==clockLast.hm){clockLast.hm=hm;
+    clockEls.hm.textContent=hm;clockEls.hh.textContent=pad(h);clockEls.mm.textContent=pad(m)}
+  if(nm!==clockLast.nm){clockLast.nm=nm;
+    clockEls.name.textContent=`${nm}时`;
+    clockEls.side.textContent=`${nm}时 · ${PHASES[phaseKey].cn}`}
 }
 applyPhase();
 tickClock();setInterval(tickClock,1000);
