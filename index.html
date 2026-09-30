@@ -273,6 +273,14 @@ var _hmt = _hmt || [];
   s.parentNode.insertBefore(hm, s);
 })();
 </script>
+<!-- Google Analytics (GA4) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQWYNJL0T"></script>
+<script>
+window.dataLayer=window.dataLayer||[];
+function gtag(){dataLayer.push(arguments)}
+gtag('js',new Date());
+gtag('config','G-LEQWYNJL0T');
+</script>
 </head>
 <body>
 
@@ -508,6 +516,20 @@ const Tracker={
       _hmt.push(['_trackEvent',cat,act]);
     }
   },
+  gaMap:{
+    shan:{views:'shan_view',interactions:'shan_peak',resets:'shan_reset',viewDuration:'shan_duration'},
+    sheng:{views:'sheng_view',touches:'sheng_touch',strokes:'sheng_stroke',soundToggles:'sheng_sound_toggle',viewDuration:'sheng_duration'},
+    mo:{views:'mo_view',strokes:'mo_stroke',resets:'mo_reset',seals:'mo_seal',saves:'mo_save',viewDuration:'mo_duration'}
+  },
+  reportGA(canvasId,field,value){
+    if(typeof gtag!=='function')return;
+    const ev=this.gaMap[canvasId]?.[field]||field;
+    if(value!==undefined){
+      gtag('event',ev,{canvas:canvasId,value:Math.round(value)});
+    }else{
+      gtag('event',ev,{canvas:canvasId});
+    }
+  },
   track(canvasId,field){
     const c=this.data?.canvases?.[canvasId];if(!c||c[field]===undefined)return;
     c[field]++;c.lastActive=Date.now();
@@ -516,6 +538,7 @@ const Tracker={
     if(!c.dailyHistory[t][field])c.dailyHistory[t][field]=0;
     c.dailyHistory[t][field]++;this.save();
     this.reportBaidu(canvasId,field);
+    this.reportGA(canvasId,field);
   },
   trackView(id){
     const c=this.data?.canvases?.[id];if(!c)return;
@@ -525,6 +548,7 @@ const Tracker={
     if(!c.dailyHistory[t].views)c.dailyHistory[t].views=0;
     c.dailyHistory[t].views++;this.save();
     this.reportBaidu(id,'views');
+    this.reportGA(id,'views');
   },
   trackDuration(id,sec){
     const c=this.data?.canvases?.[id];if(!c||sec<=0)return;
@@ -534,6 +558,7 @@ const Tracker={
     if(!c.dailyHistory[t].viewDuration)c.dailyHistory[t].viewDuration=0;
     c.dailyHistory[t].viewDuration+=sec;this.save();
     this.reportBaidu(id,'viewDuration',sec);
+    this.reportGA(id,'viewDuration',sec);
   },
   getStats(id){return id?this.data?.canvases?.[id]:this.data},
   clear(){localStorage.removeItem(this.KEY);this.init()}
