@@ -263,6 +263,16 @@ kbd{font-family:var(--serif-en);border:1px solid var(--faint);border-radius:4px;
 .dash-foot button:hover{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 
 </style>
+<!-- 百度统计 -->
+<script>
+var _hmt = _hmt || [];
+(function() {
+  var hm = document.createElement("script");
+  hm.src = "https://hm.baidu.com/hm.js?48cbcb1b78ff31798030edf52ce1f946";
+  var s = document.getElementsByTagName("script")[0]; 
+  s.parentNode.insertBefore(hm, s);
+})();
+</script>
 </head>
 <body>
 
@@ -482,6 +492,22 @@ const Tracker={
     return Object.assign({name:names[id],dailyHistory:{}},fields[id]);
   },
   save(){try{localStorage.setItem(this.KEY,JSON.stringify(this.data))}catch(e){}},
+  baiduMap:{
+    shan:{views:'浏览',interactions:'起峰',resets:'重置',viewDuration:'停留时长'},
+    sheng:{views:'浏览',touches:'触水',strokes:'抚水',soundToggles:'声音开关',viewDuration:'停留时长'},
+    mo:{views:'浏览',strokes:'落笔',resets:'研墨',seals:'钤印',saves:'收卷',viewDuration:'停留时长'}
+  },
+  reportBaidu(canvasId,field,value){
+    if(typeof _hmt==='undefined')return;
+    const names={shan:'壹山',sheng:'贰声',mo:'叁墨'};
+    const cat=names[canvasId]||canvasId;
+    const act=this.baiduMap[canvasId]?.[field]||field;
+    if(value!==undefined){
+      _hmt.push(['_trackEvent',cat,act,'',Math.round(value)]);
+    }else{
+      _hmt.push(['_trackEvent',cat,act]);
+    }
+  },
   track(canvasId,field){
     const c=this.data?.canvases?.[canvasId];if(!c||c[field]===undefined)return;
     c[field]++;c.lastActive=Date.now();
@@ -489,6 +515,7 @@ const Tracker={
     if(!c.dailyHistory[t])c.dailyHistory[t]={};
     if(!c.dailyHistory[t][field])c.dailyHistory[t][field]=0;
     c.dailyHistory[t][field]++;this.save();
+    this.reportBaidu(canvasId,field);
   },
   trackView(id){
     const c=this.data?.canvases?.[id];if(!c)return;
@@ -497,6 +524,7 @@ const Tracker={
     if(!c.dailyHistory[t])c.dailyHistory[t]={};
     if(!c.dailyHistory[t].views)c.dailyHistory[t].views=0;
     c.dailyHistory[t].views++;this.save();
+    this.reportBaidu(id,'views');
   },
   trackDuration(id,sec){
     const c=this.data?.canvases?.[id];if(!c||sec<=0)return;
@@ -505,6 +533,7 @@ const Tracker={
     if(!c.dailyHistory[t])c.dailyHistory[t]={};
     if(!c.dailyHistory[t].viewDuration)c.dailyHistory[t].viewDuration=0;
     c.dailyHistory[t].viewDuration+=sec;this.save();
+    this.reportBaidu(id,'viewDuration',sec);
   },
   getStats(id){return id?this.data?.canvases?.[id]:this.data},
   clear(){localStorage.removeItem(this.KEY);this.init()}
