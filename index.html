@@ -230,6 +230,38 @@ kbd{font-family:var(--serif-en);border:1px solid var(--faint);border-radius:4px;
   .poem{justify-self:end}
   .chapter{padding-top:14vh}
 }
+
+/* ============ 埋点面板 ============ */
+#moxiDash{position:fixed;inset:0;z-index:100;display:none;place-items:center}
+#moxiDash.show{display:grid}
+.dash-mask{position:absolute;inset:0;background:rgba(0,0,0,.45);cursor:pointer}
+.dash-panel{position:relative;background:var(--bg);border:1px solid var(--ink);
+  width:min(520px,92vw);max-height:82vh;overflow:auto;padding:36px 40px 28px;
+  box-shadow:0 24px 60px rgba(0,0,0,.18)}
+.dash-panel::before,.dash-panel::after{content:"";position:absolute;width:12px;height:12px;pointer-events:none}
+.dash-panel::before{top:-1px;left:-1px;border-top:1px solid var(--ink);border-left:1px solid var(--ink)}
+.dash-panel::after{bottom:-1px;right:-1px;border-bottom:1px solid var(--ink);border-right:1px solid var(--ink)}
+.dash-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:28px}
+.dash-title{font-size:13px;letter-spacing:.3em;color:var(--ink)}
+.dash-title em{font-family:var(--serif-en);font-style:normal;letter-spacing:.26em;color:var(--soft);margin-left:.6em}
+.dash-close{font-size:11px;letter-spacing:.3em;color:var(--soft);border-bottom:1px solid var(--faint);padding-bottom:3px}
+.dash-close:hover{color:var(--ink)}
+.dash-row{margin-bottom:24px}
+.dash-row h3{font-size:15px;letter-spacing:.2em;margin-bottom:14px;font-weight:400}
+.dash-bar-wrap{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.dash-bar-label{font-size:12px;letter-spacing:.15em;min-width:3em;color:var(--ink)}
+.dash-bar-track{flex:1;height:24px;background:color-mix(in srgb,var(--ink) 6%,transparent);position:relative;overflow:hidden}
+.dash-bar-fill{height:100%;background:var(--accent);transition:width .6s cubic-bezier(.16,1,.3,1);display:flex;align-items:center;justify-content:flex-end;padding-right:8px}
+.dash-bar-num{font-size:12px;color:#f6f1e4;font-variant-numeric:tabular-nums;white-space:nowrap}
+.dash-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px}
+.dash-cell{border:1px solid var(--hair);padding:14px 16px;text-align:center}
+.dash-cell .v{font-size:28px;font-variant-numeric:tabular-nums;line-height:1;color:var(--ink);font-family:var(--serif-en)}
+.dash-cell .l{font-size:10px;letter-spacing:.3em;color:var(--soft);margin-top:8px}
+.dash-meta{font-size:11px;letter-spacing:.2em;color:var(--soft);line-height:2.2}
+.dash-foot{display:flex;justify-content:space-between;align-items:center;margin-top:20px;padding-top:16px;border-top:1px solid var(--hair)}
+.dash-foot button{font-size:11px;letter-spacing:.3em;color:var(--soft);border:1px solid var(--hair);border-radius:999px;padding:8px 20px}
+.dash-foot button:hover{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+
 </style>
 </head>
 <body>
@@ -399,8 +431,87 @@ kbd{font-family:var(--serif-en);border:1px solid var(--faint);border-radius:4px;
 </div>
 <div id="spacer"></div>
 
+<!-- 埋点面板 -->
+<div id="moxiDash">
+  <div class="dash-mask" id="dashMask"></div>
+  <div class="dash-panel">
+    <div class="dash-head">
+      <span class="dash-title">使用频率<em>FREQUENCY</em></span>
+      <button class="dash-close" id="dashClose">关闭</button>
+    </div>
+    <div id="dashBody"></div>
+    <div class="dash-foot">
+      <span class="dash-meta" id="dashSession"></span>
+      <button id="dashClear">清除数据</button>
+    </div>
+  </div>
+</div>
+
 <script>
 'use strict';
+/* ================= 数据埋点 Tracker ================= */
+const Tracker={
+  KEY:'moxi_tracker',data:null,sectionTimes:{},
+  init(){
+    const today=new Date().toISOString().slice(0,10);
+    const sid=Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+    try{
+      const raw=localStorage.getItem(this.KEY);
+      if(raw){
+        this.data=JSON.parse(raw);
+        ['shan','sheng','mo'].forEach(k=>{
+          if(!this.data.canvases[k])this.data.canvases[k]=this.schema(k);
+          if(!this.data.canvases[k].dailyHistory)this.data.canvases[k].dailyHistory={};
+          if(!this.data.canvases[k].dailyHistory[today])this.data.canvases[k].dailyHistory[today]={};
+        });
+      }else{
+        this.data={sessionId:sid,startTime:Date.now(),canvases:{shan:this.schema('shan'),sheng:this.schema('sheng'),mo:this.schema('mo')}};
+      }
+    }catch(e){
+      this.data={sessionId:sid,startTime:Date.now(),canvases:{shan:this.schema('shan'),sheng:this.schema('sheng'),mo:this.schema('mo')}};
+    }
+    this.save();
+  },
+  schema(id){
+    const names={shan:'壹山',sheng:'贰声',mo:'叁墨'};
+    const fields={
+      shan:{views:0,viewDuration:0,interactions:0,resets:0,lastActive:null},
+      sheng:{views:0,viewDuration:0,touches:0,strokes:0,soundToggles:0,lastActive:null},
+      mo:{views:0,viewDuration:0,strokes:0,resets:0,seals:0,saves:0,lastActive:null}
+    };
+    return Object.assign({name:names[id],dailyHistory:{}},fields[id]);
+  },
+  save(){try{localStorage.setItem(this.KEY,JSON.stringify(this.data))}catch(e){}},
+  track(canvasId,field){
+    const c=this.data?.canvases?.[canvasId];if(!c||c[field]===undefined)return;
+    c[field]++;c.lastActive=Date.now();
+    const t=new Date().toISOString().slice(0,10);
+    if(!c.dailyHistory[t])c.dailyHistory[t]={};
+    if(!c.dailyHistory[t][field])c.dailyHistory[t][field]=0;
+    c.dailyHistory[t][field]++;this.save();
+  },
+  trackView(id){
+    const c=this.data?.canvases?.[id];if(!c)return;
+    c.views++;
+    const t=new Date().toISOString().slice(0,10);
+    if(!c.dailyHistory[t])c.dailyHistory[t]={};
+    if(!c.dailyHistory[t].views)c.dailyHistory[t].views=0;
+    c.dailyHistory[t].views++;this.save();
+  },
+  trackDuration(id,sec){
+    const c=this.data?.canvases?.[id];if(!c||sec<=0)return;
+    c.viewDuration+=sec;
+    const t=new Date().toISOString().slice(0,10);
+    if(!c.dailyHistory[t])c.dailyHistory[t]={};
+    if(!c.dailyHistory[t].viewDuration)c.dailyHistory[t].viewDuration=0;
+    c.dailyHistory[t].viewDuration+=sec;this.save();
+  },
+  getStats(id){return id?this.data?.canvases?.[id]:this.data},
+  clear(){localStorage.removeItem(this.KEY);this.init()}
+};
+Tracker.init();
+window.moxiStats=function(id){const r=Tracker.getStats(id);console.table(r);return r};
+
 /* ================= 工具 ================= */
 const $=(s,el=document)=>el.querySelector(s), $$=(s,el=document)=>[...el.querySelectorAll(s)];
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v)), lerp=(a,b,t)=>a+(b-a)*t, rand=(a,b)=>a+Math.random()*(b-a);
@@ -587,6 +698,7 @@ $('#soundBtn').addEventListener('click',e=>{
   ensureAudio();if(!sound.ctx)return;
   sound.ctx.resume();
   sound.on=!sound.on;
+  Tracker.track('sheng','soundToggles');
   sound.master.gain.setTargetAtTime(sound.on?.85:0,sound.ctx.currentTime,.1);
   const b=e.currentTarget;b.classList.toggle('off',!sound.on);
   b.innerHTML=sound.on?'抚水有声&nbsp;<s>开</s>':'抚水有声&nbsp;<s>关</s>';
@@ -676,6 +788,7 @@ const pond={
       const p=rel(e);
       const gap=!this.last||Math.hypot(p.x-this.last.x,p.y-this.last.y)>26;
       if(gap){
+        Tracker.track('sheng','strokes');
         /* 抚水速度 → 曲速 */
         if(this.last){
           const dts=Math.max(.016,(p.t-this.lastT)/1000);
@@ -685,7 +798,7 @@ const pond={
         this.last=p;this.spawn(p.x,p.y,true); /* 涟漪带声：墨鲤循声追着鼠标游 */
       }
     });
-    this.cv.addEventListener('pointerdown',e=>{const p=rel(e);song.stroke(600);this.spawn(p.x,p.y,true,.7)});
+    this.cv.addEventListener('pointerdown',e=>{const p=rel(e);song.stroke(600);this.spawn(p.x,p.y,true,.7);Tracker.track('sheng','touches')});
     this.cv.addEventListener('pointerleave',()=>this.last=null);
   },
   spawn(x,y,loud,pow=1){
@@ -899,7 +1012,7 @@ const brush={
   rel(e){const r=this.cv.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}},
   blob(x,y,r,a){
     const c=this.ctx;
-    c.globalCompositeOperation='multiply';
+    c.globalCompositeOperation=PAL.night>.5?'screen':'multiply';
     c.globalAlpha=a;c.fillStyle=cssA(PAL.ink,1);
     c.beginPath();c.arc(x,y,r,0,6.283);c.fill();
     c.globalAlpha=1;c.globalCompositeOperation='source-over';
@@ -909,6 +1022,7 @@ const brush={
       this.drawing=true;this.cv.setPointerCapture(e.pointerId);
       const p=this.rel(e);this.last=p;this.pts.push(p);
       this.blob(p.x,p.y,7.5,.34);
+      Tracker.track('mo','strokes');
     });
     this.cv.addEventListener('pointermove',e=>{
       if(!this.drawing)return;
@@ -956,9 +1070,9 @@ function rrect(c,x,y,w,h,r){
   c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();
 }
 brush.resize();brush.bind();
-$('#resetBtn').addEventListener('click',()=>brush.paper());
-$('#sealBtn').addEventListener('click',()=>brush.seal());
-$('#saveBtn').addEventListener('click',()=>brush.save());
+$('#resetBtn').addEventListener('click',()=>{Tracker.track('mo','resets');brush.paper()});
+$('#sealBtn').addEventListener('click',()=>{Tracker.track('mo','seals');brush.seal()});
+$('#saveBtn').addEventListener('click',()=>{Tracker.track('mo','saves');brush.save()});
 
 /* ================= 空山 · 第壹章创作区 ================= */
 const mount={
@@ -1001,6 +1115,7 @@ const mount={
       this.render();
       const idx=clamp(Math.round((1-ay/this.h)*2),0,2);
       if(sound.on)pluck(SCALE[idx],.08,(p.x/this.w-.5)*1.4);
+      Tracker.track('shan','interactions');
     });
   },
   /* 起峰参数：与近邻反其势——邻宽我窄、邻雄缓我峻峭、邻脊密我脊疏、子峰主侧互换 */
@@ -1133,7 +1248,7 @@ const mount={
   }
 };
 mount.resize();mount.bind();
-$('#mountResetBtn').addEventListener('click',()=>{mount.peaks.length=0;mount.render()});
+$('#mountResetBtn').addEventListener('click',()=>{Tracker.track('shan','resets');mount.peaks.length=0;mount.render()});
 
 /* ================= 四时 ================= */
 $$('.chip').forEach(ch=>ch.addEventListener('click',()=>{
@@ -1223,6 +1338,29 @@ const io=new IntersectionObserver(es=>es.forEach(e=>{
 $$('.rv').forEach(el=>{
   if(el.dataset.d)el.style.transitionDelay=(el.dataset.d*.14)+'s';
   io.observe(el);
+});
+
+/* ================= 章节浏览埋点 ================= */
+const _sectionTimes={};
+const _sectionObserver=new IntersectionObserver(es=>{
+  es.forEach(e=>{
+    const id=e.target.id;
+    if(e.isIntersecting){
+      Tracker.trackView(id);
+      _sectionTimes[id]=Date.now();
+    }else if(_sectionTimes[id]){
+      const dur=Math.round((Date.now()-_sectionTimes[id])/1000);
+      if(dur>0)Tracker.trackDuration(id,dur);
+      delete _sectionTimes[id];
+    }
+  });
+},{threshold:0.25});
+['shan','sheng','mo'].forEach(id=>_sectionObserver.observe($('#'+id)));
+addEventListener('beforeunload',()=>{
+  for(const id in _sectionTimes){
+    const dur=Math.round((Date.now()-_sectionTimes[id])/1000);
+    if(dur>0)Tracker.trackDuration(id,dur);
+  }
 });
 
 /* ================= 磁性元素 ================= */
@@ -1315,6 +1453,67 @@ addEventListener('resize',()=>{clearTimeout(rzT);rzT=setTimeout(onResize,120)});
 addEventListener('load',()=>{syncHeight();garden.resize();pond.resize();mount.resize()});
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(syncHeight);
 syncHeight();
+
+/* ================= 埋点面板 ================= */
+const dashEl=$('#moxiDash'),dashBody=$('#dashBody'),dashSession=$('#dashSession');
+function dashOpen(){
+  const d=Tracker.data;
+  if(!d)return;
+  const c=d.canvases;
+  /* 计算各画布核心指标 */
+  const shanUse=c.shan.interactions;
+  const shengUse=c.sheng.touches+c.sheng.strokes;
+  const moUse=c.mo.strokes;
+  const maxUse=Math.max(shanUse,shengUse,moUse,1);
+  /* 核心频率柱状图 */
+  const bars=[
+    {name:'壹山',val:shanUse,sub:`浏览${c.shan.views}次 · 停留${c.shan.viewDuration}秒`},
+    {name:'贰声',val:shengUse,sub:`浏览${c.sheng.views}次 · 停留${c.sheng.viewDuration}秒`},
+    {name:'叁墨',val:moUse,sub:`浏览${c.mo.views}次 · 停留${c.mo.viewDuration}秒`}
+  ];
+  let barHtml='<div class="dash-row"><h3>交互频率对比</h3>';
+  bars.forEach(b=>{
+    const pct=(b.val/maxUse*100).toFixed(1);
+    barHtml+=`<div class="dash-bar-wrap"><span class="dash-bar-label">${b.name}</span><div class="dash-bar-track"><div class="dash-bar-fill" style="width:${pct}%"><span class="dash-bar-num">${b.val}</span></div></div></div>`;
+    barHtml+=`<div class="dash-meta" style="margin-left:3em;margin-bottom:6px">${b.sub}</div>`;
+  });
+  barHtml+='</div>';
+  /* 详细指标 */
+  let detailHtml='<div class="dash-row"><h3>详细数据</h3><div class="dash-grid">';
+  const cells=[
+    ['壹山 · 起峰',c.shan.interactions,'INTERACTIONS'],
+    ['壹山 · 重置',c.shan.resets,'RESETS'],
+    ['壹山 · 浏览',c.shan.views,'VIEWS'],
+    ['贰声 · 触水',c.sheng.touches,'TOUCHES'],
+    ['贰声 · 抚水',c.sheng.strokes,'STROKES'],
+    ['贰声 · 声音',c.sheng.soundToggles,'SOUND TOGGLES'],
+    ['叁墨 · 落笔',c.mo.strokes,'STROKES'],
+    ['叁墨 · 钤印',c.mo.seals,'SEALS'],
+    ['叁墨 · 收卷',c.mo.saves,'SAVES']
+  ];
+  cells.forEach(([l,v,en])=>{detailHtml+=`<div class="dash-cell"><div class="v">${v||0}</div><div class="l">${l}</div></div>`});
+  detailHtml+='</div></div>';
+  /* 按钮指标 */
+  let btnHtml='<div class="dash-row"><h3>按钮操作</h3><div class="dash-grid">';
+  [['壹山 · 重置',c.shan.resets],['贰声 · 声音',c.sheng.soundToggles],['叁墨 · 研墨',c.mo.resets],['叁墨 · 钤印',c.mo.seals],['叁墨 · 收卷',c.mo.saves]].forEach(([l,v])=>{btnHtml+=`<div class="dash-cell"><div class="v">${v||0}</div><div class="l">${l}</div></div>`});
+  btnHtml+='</div></div>';
+  dashBody.innerHTML=barHtml+detailHtml+btnHtml;
+  const start=new Date(d.startTime);
+  dashSession.textContent=`会话开始 · ${start.toLocaleString('zh-CN')}`;
+  dashEl.classList.add('show');
+}
+function dashClose(){dashEl.classList.remove('show')}
+$('#dashClose').addEventListener('click',dashClose);
+$('#dashMask').addEventListener('click',dashClose);
+$('#dashClear').addEventListener('click',()=>{Tracker.clear();dashClose()});
+addEventListener('keydown',e=>{
+  if(e.key==='D'&&e.ctrlKey&&e.shiftKey){e.preventDefault();dashOpen()}
+  if(e.key==='Escape')dashClose();
+});
+window.moxiDashboard=dashOpen;
 </script>
+<!-- Cloudflare Web Analytics -->
+<script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "6c9778f53f3240f399e52374e513a213"}'></script>
+<!-- End Cloudflare Web Analytics -->
 </body>
 </html>
