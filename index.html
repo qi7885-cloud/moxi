@@ -469,24 +469,45 @@ gtag('config','G-LEQWYNJL0T');
 'use strict';
 /* ================= 数据埋点 Tracker ================= */
 const Tracker={
-  KEY:'moxi_tracker',data:null,sectionTimes:{},
+  KEY:'moxi_tracker',USER_KEY:'moxi_user_id',data:null,sectionTimes:{},eventCount:0,userId:null,
+  genUserId(){
+    // 生成持久化用户ID，存在 localStorage，跨会话保持
+    try{
+      let uid=localStorage.getItem(this.USER_KEY);
+      if(!uid){
+        uid='u_'+Date.now().toString(36)+Math.random().toString(36).slice(2,10);
+        localStorage.setItem(this.USER_KEY,uid);
+      }
+      return uid;
+    }catch(e){
+      return 'u_anon_'+Math.random().toString(36).slice(2,10);
+    }
+  },
   init(){
     const today=new Date().toISOString().slice(0,10);
     const sid=Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+    this.userId=this.genUserId();
+    this.eventCount=0;
+    // 设置 GA4 user_id
+    if(typeof gtag==='function'){
+      gtag('set','user_id',this.userId);
+    }
     try{
       const raw=localStorage.getItem(this.KEY);
       if(raw){
         this.data=JSON.parse(raw);
+        this.data.sessionId=sid;
+        this.data.userId=this.userId;
         ['shan','sheng','mo'].forEach(k=>{
           if(!this.data.canvases[k])this.data.canvases[k]=this.schema(k);
           if(!this.data.canvases[k].dailyHistory)this.data.canvases[k].dailyHistory={};
           if(!this.data.canvases[k].dailyHistory[today])this.data.canvases[k].dailyHistory[today]={};
         });
       }else{
-        this.data={sessionId:sid,startTime:Date.now(),canvases:{shan:this.schema('shan'),sheng:this.schema('sheng'),mo:this.schema('mo')}};
+        this.data={sessionId:sid,userId:this.userId,startTime:Date.now(),canvases:{shan:this.schema('shan'),sheng:this.schema('sheng'),mo:this.schema('mo')}};
       }
     }catch(e){
-      this.data={sessionId:sid,startTime:Date.now(),canvases:{shan:this.schema('shan'),sheng:this.schema('sheng'),mo:this.schema('mo')}};
+      this.data={sessionId:sid,userId:this.userId,startTime:Date.now(),canvases:{shan:this.schema('shan'),sheng:this.schema('sheng'),mo:this.schema('mo')}};
     }
     this.save();
   },
@@ -521,13 +542,43 @@ const Tracker={
     sheng:{views:'sheng_view',touches:'sheng_touch',strokes:'sheng_stroke',soundToggles:'sheng_sound_toggle',viewDuration:'sheng_duration'},
     mo:{views:'mo_view',strokes:'mo_stroke',resets:'mo_reset',seals:'mo_seal',saves:'mo_save',viewDuration:'mo_duration'}
   },
+  gaCnNames:{
+    shan:'壹山',sheng:'贰声',mo:'叁墨',
+    views:'浏览',interactions:'起峰',resets:'重置',viewDuration:'停留时长',
+    touches:'触水',strokes:'抚水',soundToggles:'声音开关',
+    seals:'钤印',saves:'收卷'
+  },
+  getGaParams(canvasId,field,value){
+    this.eventCount++;
+    const canvasCn=this.gaCnNames[canvasId]||canvasId;
+    let eventCn=this.gaCnNames[field]||field;
+    if(canvasId==='mo'&&field==='strokes')eventCn='落笔';
+    const params={
+      canvas:canvasId,
+      canvas_name:canvasCn,
+      event_name_cn:eventCn,
+      session_id:this.data?.sessionId||'',
+      user_id:this.userId,
+      event_sequence:this.eventCount,
+      timestamp:new Date().toISOString()
+    };
+    if(value!==undefined){
+      params.value=Math.round(value);
+      params.duration_seconds=Math.round(value);
+    }
+    return params;
+  },
   reportGA(canvasId,field,value){
     if(typeof gtag!=='function')return;
     const ev=this.gaMap[canvasId]?.[field]||field;
-    if(value!==undefined){
-      gtag('event',ev,{canvas:canvasId,value:Math.round(value)});
-    }else{
-      gtag('event',ev,{canvas:canvasId});
+    const params=this.getGaParams(canvasId,field,value);
+    gtag('event',ev,params);
+    // 收卷保存 = 核心转化事件
+    if(canvasId==='mo'&&field==='saves'){
+      gtag('event','artwork_saved',{
+        ...params,
+        transaction_id:'art_'+Date.now().toString(36)
+      });
     }
   },
   track(canvasId,field){
